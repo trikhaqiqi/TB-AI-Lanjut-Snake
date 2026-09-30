@@ -11,6 +11,9 @@ from .models import Direction, GameSnapshot, Position
 
 class MoveStrategy(ABC):
     """Base class for every automated snake movement method."""
+    
+    #untuk menyimpan kotak yang sudah dikunjungi di DFS
+    visited=[]
 
     @abstractmethod
     def choose_move(
@@ -47,6 +50,19 @@ class SafeRandomStrategy(MoveStrategy):
         self, snapshot: GameSnapshot, snake_id: str, rng: Random
     ) -> Direction:
         legal = snapshot.legal_moves_for(snake_id)
+        snake = snapshot.snake(snake_id)
+        #Cek Beberapa output saat snake berpindah posisi
+        print(snake.direction)
+        print(f"Legal moves: {legal} \n")
+        print(f"Snake Body: {snake.body} \n")
+        print(f"Snake Direction Vector: {snake.direction.vector} \n")
+
+        # Note hasil cek output untuk setiap pergerakan:
+        # Direction.UP: (0,-1)
+        # Direction.DOWN : (0,1)
+        # Direction.LEFT : (-1,0)
+        # Direction.RIGHT : (1,0)
+        
         if legal:
             return rng.choice(legal)
         return snapshot.snake(snake_id).direction
@@ -279,3 +295,68 @@ class StrategiUCS(MoveStrategy):
 #     def choose_move(self, snapshot, snake_id, rng):
 #         legal_moves = snapshot.legal_moves_for(snake_id)
 #         return legal_moves[0] if legal_moves else snapshot.snake(snake_id).direction
+
+
+@register_strategy("DFS")
+class DFS(MoveStrategy):
+    def choose_move(self, snapshot, snake_id, rng) -> Direction:
+        legal_moves = snapshot.legal_moves_for(snake_id)
+        snake = snapshot.snake(snake_id)
+
+        #Simpan kotak yang sudah dikunjungi
+        print(f"Visited:{self.visited}")
+
+        #Urutan arah prioritas adalah maju, belok kanan, belok kiri
+        if snake.direction==Direction.RIGHT:
+            priority_moves=[Direction.RIGHT, Direction.DOWN, Direction.UP]
+        elif snake.direction==Direction.LEFT:
+            priority_moves=[Direction.LEFT, Direction.UP, Direction.DOWN]
+        elif snake.direction==Direction.UP:
+            priority_moves=[Direction.UP, Direction.RIGHT, Direction.LEFT]
+        else:
+            priority_moves=[Direction.DOWN,Direction.LEFT, Direction.RIGHT]
+
+        #Menyimpan setiap node yang sudah pernah dikunjungi
+        head_x, head_y = snake.body[0]
+        self.visited.append((head_x,head_y))
+
+        def is_visited(next):
+            if next in self.visited:
+                return True
+            return False
+
+        def cek_arah(direction)->bool:
+            if(direction in legal_moves):
+                return True
+
+        def cek_kunjungan(x,y)->bool:
+            if (x,y) not in self.visited:
+                return True
+            return False
+
+
+        maju=snake.direction
+        dx, dy = maju.vector
+        print(f"legal: {legal_moves}")
+        print(f"maju:{maju}\n")
+
+        if(legal_moves):
+            if(maju in legal_moves and not is_visited(tuple((head_x+dx,head_y+dy)))):
+                print ("masih bisa maju")
+                return maju
+            else:
+                print("harusnya sudah ubah arah")
+                for direction in priority_moves:
+                    dirx,diry = direction.vector
+                    islegalmove=cek_arah(direction)
+                    isbelumdikunjungi=cek_kunjungan(head_x+dirx,head_y+diry)
+                    
+                    if(islegalmove and isbelumdikunjungi):
+                        return direction
+                print("habis langkah, perlu restart algoritma deh, biar game tetap jalan")
+                
+                #clear data kotak yang pernah dikunjungi
+                self.visited.clear()
+                
+                #arah pertama sejak restart dipilih random dari legal moves
+                return rng.choice(legal_moves)
