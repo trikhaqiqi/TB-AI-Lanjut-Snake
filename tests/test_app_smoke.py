@@ -170,7 +170,8 @@ def test_missing_strategy_is_recoverable(monkeypatch) -> None:
         assert app.engine is None
         assert "Greedy" in app.setup_error
         app.draw()
-        monkeypatch.delitem(STRATEGY_REGISTRY, "Safe Random")
+        for name in list(STRATEGY_REGISTRY):
+            monkeypatch.delitem(STRATEGY_REGISTRY, name)
         app.draw()
         assert "strategy" not in app._buttons
     finally:
