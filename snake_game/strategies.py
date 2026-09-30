@@ -141,11 +141,13 @@ class DFS(MoveStrategy):
                 return True
             return False
 
+
         maju=snake.direction
         dx, dy = maju.vector
         print(f"legal: {legal_moves}")
         print(f"maju:{maju}\n")
-        try:
+
+        if(legal_moves):
             if(maju in legal_moves and not is_visited(tuple((head_x+dx,head_y+dy)))):
                 print ("masih bisa maju")
                 return maju
@@ -158,5 +160,10 @@ class DFS(MoveStrategy):
                     
                     if(islegalmove and isbelumdikunjungi):
                         return direction
-        except:
-            return maju
+                print("habis langkah, perlu restart algoritma deh, biar game tetap jalan")
+                
+                #clear data kotak yang pernah dikunjungi
+                self.visited.clear()
+                
+                #arah pertama sejak restart dipilih random dari legal moves
+                return rng.choice(legal_moves)
