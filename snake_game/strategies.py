@@ -437,3 +437,223 @@ class AStar(MoveStrategy):
 
         return langkah
 
+
+@register_strategy("Greedy Best-First Search")
+class Greedy_Best_First_Search(MoveStrategy):
+    def __init__(self):
+        # statistik
+        self.number_of_expanded = 0
+        self.number_of_generated = 0
+        self.path_length = 0
+        self.path_astar = []
+
+    def choose_move(
+        self, snapshot: GameSnapshot, snake_id: str, rng: Random
+    ) -> Direction:
+        legal = snapshot.legal_moves_for(snake_id)
+        snake = snapshot.snake(snake_id)
+        if len(legal) == 0 or len(snapshot.apples) == 0:
+            return snake.direction
+
+        start = snake.body[0]
+        apples = snapshot.apples
+
+        #Cek ilegal move
+        blocked = set()
+        for s in snapshot.snakes:
+            if s.snake_id == snake_id:
+                # ular sendiri: ekor tidak dihitung, karena akan bergeser
+                for i in range(len(s.body) - 1):
+                    blocked.add(s.body[i])
+            else:
+                # ular lawan: seluruh badan dihitung
+                for posisi in s.body:
+                    blocked.add(posisi)
+
+        # Cek apakah kotak (x, y) masih di dalam papan
+        def di_dalam_papan(x, y):
+            if x < 0:
+                return False
+            if x >= snapshot.columns:
+                return False
+            if y < 0:
+                return False
+            if y >= snapshot.rows:
+                return False
+            return True
+
+        # Cek apakah kotak (x, y) boleh dilewati
+        def boleh_dilewati(x, y):
+            if not di_dalam_papan(x, y):
+                return False
+            if (x, y) in blocked:
+                return False
+            return True
+
+        # Heuristik h: jarak Manhattan ke apel terdekat
+        def hitung_h(x, y):
+            h_terkecil = 9999
+            for apel in apples:
+                apel_x, apel_y = apel
+                jarak = abs(x - apel_x) + abs(y - apel_y)
+                if jarak < h_terkecil:
+                    h_terkecil = jarak
+            return h_terkecil
+
+        # inisial state
+        start_x, start_y = start
+        h_start = hitung_h(start_x, start_y)
+
+        # Setiap isi open_list: (f, g, h, posisi)
+        open_list = [(h_start, 0, h_start, start)]
+
+        g_cost = {}
+        g_cost[start] = 0
+
+        parent_posisi = {}
+        parent_arah = {}
+        parent_posisi[start] = None
+
+        closed = set()              # posisi yang sudah diekspansi
+        goal = None
+
+        expanded_giliran = 0
+        generated_giliran = 0
+        urutan_expand = []          # untuk dicetak: (posisi, g, h, f)
+
+       
+
+        #Loop A*
+
+        while len(open_list) > 0:
+
+            #Cari node dengan f terkecil (kalau f sama, pilih h terkecil)
+            best_i = 0
+            for i in range(len(open_list)):
+                f_i, g_i, h_i, pos_i = open_list[i]
+                f_best, g_best, h_best, pos_best = open_list[best_i]
+                if f_i < f_best:
+                    best_i = i
+                if f_i == f_best and h_i < h_best:
+                    best_i = i
+
+            #Keluarkan node terpilih dari open_list
+            f, g, h, current = open_list.pop(best_i)
+
+            #Lewati kalau sudah pernah diekspansi
+            if current in closed:
+                continue
+
+            #Ekspansi node ini
+            closed.add(current)
+            expanded_giliran += 1
+            urutan_expand.append((current, g, h, f))
+
+            #ular makan apel
+            if current in apples:
+                goal = current
+                break
+
+            current_x, current_y = current
+            for arah in Direction:
+                # langkah pertama harus mengikuti legal moves dari engine
+                if current == start and arah not in legal:
+                    continue
+
+                dx, dy = arah.vector
+                next_x = current_x + dx
+                next_y = current_y + dy
+                tetangga = (next_x, next_y)
+
+                if not boleh_dilewati(next_x, next_y):
+                    continue
+                if tetangga in closed:
+                    continue
+
+                g_baru = g + 1                          # biaya dari start ke tetangga
+                h_baru = hitung_h(next_x, next_y)       # estimasi tetangga ke apel
+                f_baru = h_baru
+
+                # simpan kalau tetangga baru, atau ketemu jalan yang lebih murah
+                if tetangga not in g_cost or g_baru < g_cost[tetangga]:
+                    g_cost[tetangga] = g_baru
+                    parent_posisi[tetangga] = current
+                    parent_arah[tetangga] = arah
+                    open_list.append((f_baru, g_baru, h_baru, tetangga))
+                    generated_giliran += 1
+
+            print(f"Open List : {open_list}")
+            print(f"Closed List : {closed}")
+            
+
+        self.number_of_expanded += expanded_giliran
+        self.number_of_generated += generated_giliran
+        # print(f"Goal : {goal}")
+  
+        #Kalau tidak ada jalur ke apel
+        if goal == None:
+            pilihan = legal[0]
+            ruang_terbanyak = -1
+            for arah in legal:
+                dx, dy = arah.vector
+                x = start_x + dx
+                y = start_y + dy
+
+                # hitung kotak kosong di sekitar (x, y)
+                ruang = 0
+                for arah_sekitar in Direction:
+                    sx, sy = arah_sekitar.vector
+                    if boleh_dilewati(x + sx, y + sy):
+                        ruang += 1
+
+                if ruang > ruang_terbanyak:
+                    ruang_terbanyak = ruang
+                    pilihan = arah
+
+            print(f"Tidak ada jalur ke apel, pilih {pilihan.name}")
+            return pilihan
+
+        #Susun jalur
+        jalur_posisi = []
+        jalur_arah = []
+        node = goal
+        while parent_posisi[node] != None:
+            jalur_posisi.insert(0, node)
+            jalur_arah.insert(0, parent_arah[node])
+            node = parent_posisi[node]
+
+        self.path_astar = jalur_posisi
+        self.path_length += 1
+        langkah = jalur_arah[0]
+
+        teks_jalur = ""
+        for arah in jalur_arah:
+            if teks_jalur != "":
+                teks_jalur += " -> "
+            teks_jalur += arah.name
+
+        #Cetak rekap proses ronde ini
+        print(f"Apel   : {goal}")
+        print(f"Jalur  : {teks_jalur}")
+        print(f"Pilih  : {langkah.name}")
+        print(f"\n===== Ronde {snapshot.rounds_completed} =====")
+        print(f"Kepala : {start}")
+        print(f"Node yang diekspansi ({expanded_giliran}):")
+        nomor = 1
+        for data in urutan_expand:
+            posisi, g, h, f = data
+            print(f"  {nomor}. {posisi}  g={g} h={h} f={f}")
+            nomor += 1
+        print(f"Generated: {generated_giliran}")
+
+        print(f"Number of food items collected: {snake.score}")
+        print(f"Number of states expanded: {self.number_of_expanded}")
+        print(f"Number of states Generated: {self.number_of_generated}")
+        print(f"Path length: {self.path_length}")
+        # print(f"Path cost: {self.path_length}")
+        print(f"Execution time: {generated_giliran}")
+
+        print(f"Total Generated= {self.number_of_generated}")
+        print(f"")
+
+        return langkah
