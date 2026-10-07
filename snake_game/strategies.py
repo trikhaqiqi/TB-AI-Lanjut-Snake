@@ -219,7 +219,7 @@ class DFS(MoveStrategy):
                 return rng.choice(legal_moves)
 
         
-@register_strategy("AStar")
+@register_strategy("A*")
 class AStar(MoveStrategy):
     def __init__(self):
         # statistik
@@ -425,6 +425,15 @@ class AStar(MoveStrategy):
             posisi, g, h, f = data
             print(f"  {nomor}. {posisi}  g={g} h={h} f={f}")
             nomor += 1
-        print(f"Generated: {generated_giliran}")
+        print(f"Number of food items collected: {snake.score}")
+        print(f"Number of states expanded: {self.number_of_expanded}")
+        print(f"Number of states Generated: {self.number_of_generated}")
+        print(f"Path length: {self.path_length}")
+        # print(f"Path cost: {self.path_length}")
+        print(f"Execution time: {generated_giliran}")
+
+        print(f"Total Generated= {self.number_of_generated}")
+        print(f"")
 
         return langkah
+
