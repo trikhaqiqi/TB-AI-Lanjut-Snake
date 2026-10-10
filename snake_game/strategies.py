@@ -4,8 +4,13 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from random import Random
 
+<<<<<<< Updated upstream
 from .models import Direction, GameSnapshot
 
+=======
+from .models import Direction, GameSnapshot, Position
+import time
+>>>>>>> Stashed changes
 
 class MoveStrategy(ABC):
     """Base class for every automated snake movement method."""    
@@ -134,7 +139,6 @@ class GreedyStrategy(MoveStrategy):
 @register_strategy("DFS")
 class DFS(MoveStrategy):
     
-    
     def __init__(self):
         self.number_of_expanded = 0
         self.number_of_generated = 0
@@ -142,13 +146,18 @@ class DFS(MoveStrategy):
         self.total_apel=0
         self.visited= []
         self.path_dfs=[]
-    
+        self.execution_time = 0.0
+        self.total_execution_time = 0.0
     
     def choose_move(self, snapshot, snake_id, rng) -> Direction:
         legal_moves = snapshot.legal_moves_for(snake_id)
         snake = snapshot.snake(snake_id)
         print(f"===Ronde {snapshot.rounds_completed}====")
-        #Simpan kotak yang sudah dikunjungi    
+
+        start_time = time.perf_counter()
+        self.execution_time = time.perf_counter() - start_time
+        self.total_execution_time += self.execution_time
+
         head_x, head_y = snake.body[0]
         self.visited.append((head_x,head_y))
         self.path_dfs.append((head_x,head_y))
@@ -186,14 +195,16 @@ class DFS(MoveStrategy):
 
         maju=snake.direction
         dx, dy = maju.vector
-        
+
 
         print(f"Path_Length : {self.path_length}\n")
         print(f"Path DFS:{self.path_dfs}\n")
         print(f"Number of Expanded : {self.number_of_expanded}")
         print(f"Number of Generated: {self.number_of_generated}")
         print(f"Path Lenght: {self.path_length}")
+        print(f"Jumlah Apel dimakan dari Total Apel: {snake.score}/{self.total_apel}")
         print(f"Success Rate : {(snake.score/self.total_apel)*100} persen")
+        print(f"Execution Time : {self.total_execution_time* 1000:.4f}")
 
         if(legal_moves):
             self.number_of_generated+=len(legal_moves)
@@ -218,97 +229,66 @@ class DFS(MoveStrategy):
                 #pilih random move
                 return rng.choice(legal_moves)
 
-        
-@register_strategy("A*")
-class AStar(MoveStrategy):
-    def __init__(self):
-        # statistik
-        self.number_of_expanded = 0
-        self.number_of_generated = 0
-        self.path_length = 0
-        self.path_astar = []
 
+@register_strategy("A*")
+class Astar(MoveStrategy):
+    def __init__(self):
+            # statistik
+            self.number_of_expanded = 0
+            self.number_of_generated = 0
+            self.path_length = 0
+            self.path_cost=0
+            self.path = []
+
+            self.execution_time = 0.0       
+            self.total_execution_time = 0.0 
+            self.move_count = 0
+
+            self.total_path_length = 0
+            self.total_path_cost = 0
+            self.current_target = None
+            self.max_path_length_target = 0
+            self.max_path_cost_target = 0
+            
     def choose_move(
         self, snapshot: GameSnapshot, snake_id: str, rng: Random
     ) -> Direction:
         legal = snapshot.legal_moves_for(snake_id)
         snake = snapshot.snake(snake_id)
-        if len(legal) == 0 or len(snapshot.apples) == 0:
+        if not legal or not snapshot.apples:
             return snake.direction
+
+        start_time = time.perf_counter()
 
         start = snake.body[0]
         apples = snapshot.apples
+        expanded=set()
+      
 
-        #Cek ilegal move
-        blocked = set()
-        for s in snapshot.snakes:
-            if s.snake_id == snake_id:
-                # ular sendiri: ekor tidak dihitung, karena akan bergeser
-                for i in range(len(s.body) - 1):
-                    blocked.add(s.body[i])
-            else:
-                # ular lawan: seluruh badan dihitung
-                for posisi in s.body:
-                    blocked.add(posisi)
-
-        # Cek apakah kotak (x, y) masih di dalam papan
-        def di_dalam_papan(x, y):
-            if x < 0:
-                return False
-            if x >= snapshot.columns:
-                return False
-            if y < 0:
-                return False
-            if y >= snapshot.rows:
-                return False
-            return True
-
-        # Cek apakah kotak (x, y) boleh dilewati
-        def boleh_dilewati(x, y):
-            if not di_dalam_papan(x, y):
-                return False
-            if (x, y) in blocked:
-                return False
-            return True
-
-        # Heuristik h: jarak Manhattan ke apel terdekat
-        def hitung_h(x, y):
-            h_terkecil = 9999
+        #fungsi hitung heuristik
+        def hitung_h(x,y):
+            h_min=9999
             for apel in apples:
-                apel_x, apel_y = apel
-                jarak = abs(x - apel_x) + abs(y - apel_y)
-                if jarak < h_terkecil:
-                    h_terkecil = jarak
-            return h_terkecil
+                x_apel, y_apel = apel
+                jarak = abs(x-x_apel)+abs(y-y_apel)
+                if(jarak<h_min):
+                    h_min=jarak
+            return h_min
 
-        # inisial state
-        start_x, start_y = start
-        h_start = hitung_h(start_x, start_y)
+        x_start, y_start = start
+        h_start=hitung_h(x_start,y_start)
+        
+        g_start=0
+        f_start=g_start+h_start
+        # print(f"h_start: {h_start}, g_start: {g_start}, f_start:{h_start}")
+        open_list = [(f_start, g_start, h_start, start)]
 
-        # Setiap isi open_list: (f, g, h, posisi)
-        open_list = [(h_start, 0, h_start, start)]
-
-        g_cost = {}
-        g_cost[start] = 0
-
-        parent_posisi = {}
-        parent_arah = {}
-        parent_posisi[start] = None
-
-        closed = set()              # posisi yang sudah diekspansi
         goal = None
+        parent = {start: None}
+        best_g = {start: 0}
+        # print(f"open_list :{open_list}")
 
-        expanded_giliran = 0
-        generated_giliran = 0
-        urutan_expand = []          # untuk dicetak: (posisi, g, h, f)
-
-       
-
-        #Loop A*
-
-        while len(open_list) > 0:
-
-            #Cari node dengan f terkecil (kalau f sama, pilih h terkecil)
+        while(len(open_list) > 0 ):
             best_i = 0
             for i in range(len(open_list)):
                 f_i, g_i, h_i, pos_i = open_list[i]
@@ -317,217 +297,167 @@ class AStar(MoveStrategy):
                     best_i = i
                 if f_i == f_best and h_i < h_best:
                     best_i = i
-
-            #Keluarkan node terpilih dari open_list
+            
+            
             f, g, h, current = open_list.pop(best_i)
-
-            #Lewati kalau sudah pernah diekspansi
-            if current in closed:
+            
+            if current in expanded:
                 continue
 
             #Ekspansi node ini
-            closed.add(current)
-            expanded_giliran += 1
-            urutan_expand.append((current, g, h, f))
-
-            #ular makan apel
+            expanded.add(current)
+            self.number_of_expanded+=1
+            # print(f"expanded: {self.number_of_expanded}")
             if current in apples:
                 goal = current
                 break
 
-            current_x, current_y = current
+            x_current, y_current = current
             for arah in Direction:
-                # langkah pertama harus mengikuti legal moves dari engine
                 if current == start and arah not in legal:
                     continue
 
-                dx, dy = arah.vector
-                next_x = current_x + dx
-                next_y = current_y + dy
-                tetangga = (next_x, next_y)
+                dx, dy =  arah.vector
+                x_next = x_current + dx
+                y_next = y_current + dy
 
-                if not boleh_dilewati(next_x, next_y):
-                    continue
-                if tetangga in closed:
+                next = (x_next, y_next)
+                if next in snake.body:
                     continue
 
-                g_baru = g + 1                          # biaya dari start ke tetangga
-                h_baru = hitung_h(next_x, next_y)       # estimasi tetangga ke apel
-                f_baru = g_baru + h_baru
+                if next in expanded:
+                    continue
 
-                # simpan kalau tetangga baru, atau ketemu jalan yang lebih murah
-                if tetangga not in g_cost or g_baru < g_cost[tetangga]:
-                    g_cost[tetangga] = g_baru
-                    parent_posisi[tetangga] = current
-                    parent_arah[tetangga] = arah
-                    open_list.append((f_baru, g_baru, h_baru, tetangga))
-                    generated_giliran += 1
+                g_new = g+1
 
-            print(f"Open List : {open_list}")
-            print(f"Closed List : {closed}")
+                if next in best_g and g_new >= best_g[next]:
+                    continue
             
+                best_g[next] = g_new
+                parent[next] = current
+                # print(f"parent: {parent[next]}")
 
-        self.number_of_expanded += expanded_giliran
-        self.number_of_generated += generated_giliran
-        # print(f"Goal : {goal}")
-  
-        #Kalau tidak ada jalur ke apel
+                self.number_of_generated+=1
+                h_new= hitung_h(x_next, y_next)
+                f_new = g_new + h_new
+
+                open_list.append((f_new, g_new, h_new, next))
+
+        
+        self.execution_time = time.perf_counter() - start_time
+        self.total_execution_time += self.execution_time
+        self.move_count+=1
+
+        
+        # print(f"Goal: {goal}")
         if goal == None:
-            pilihan = legal[0]
-            ruang_terbanyak = -1
-            for arah in legal:
-                dx, dy = arah.vector
-                x = start_x + dx
-                y = start_y + dy
+            return rng.choice(list(legal))
 
-                # hitung kotak kosong di sekitar (x, y)
-                ruang = 0
-                for arah_sekitar in Direction:
-                    sx, sy = arah_sekitar.vector
-                    if boleh_dilewati(x + sx, y + sy):
-                        ruang += 1
-
-                if ruang > ruang_terbanyak:
-                    ruang_terbanyak = ruang
-                    pilihan = arah
-
-            print(f"Tidak ada jalur ke apel, pilih {pilihan.name}")
-            return pilihan
-
-        #Susun jalur
-        jalur_posisi = []
-        jalur_arah = []
+        path = []
         node = goal
-        while parent_posisi[node] != None:
-            jalur_posisi.insert(0, node)
-            jalur_arah.insert(0, parent_arah[node])
-            node = parent_posisi[node]
+        while node != start:
+            path.append(node)
+            node = parent[node]
+        path.reverse()
 
-        self.path_astar = jalur_posisi
-        self.path_length += 1
-        langkah = jalur_arah[0]
+        self.path=path
+        self.path_length = len(path)
+        self.path_cost = best_g[goal]
+        self.total_path_cost+=1
 
-        teks_jalur = ""
-        for arah in jalur_arah:
-            if teks_jalur != "":
-                teks_jalur += " -> "
-            teks_jalur += arah.name
+        if goal != self.current_target:
+            self.current_target = goal
+            self.max_path_length_target = self.path_length
+            self.total_path_length += self.path_length
+        elif self.path_length > self.max_path_length_target:
+                self.total_path_length += self.path_length - self.max_path_length_target
+                self.max_path_length_target = self.path_length
 
-        #Cetak proses A* ronde ini
-        print(f"Apel   : {goal}")
-        print(f"Jalur  : {teks_jalur}")
-        print(f"Pilih  : {langkah.name}")
-        print(f"\n===== Ronde {snapshot.rounds_completed} =====")
-        print(f"Kepala : {start}")
-        print(f"Node yang diekspansi ({expanded_giliran}):")
-        nomor = 1
-        for data in urutan_expand:
-            posisi, g, h, f = data
-            print(f"  {nomor}. {posisi}  g={g} h={h} f={f}")
-            nomor += 1
-        print(f"Number of food items collected: {snake.score}")
-        print(f"Number of states expanded: {self.number_of_expanded}")
-        print(f"Number of states Generated: {self.number_of_generated}")
-        print(f"Path length: {self.path_length}")
-        # print(f"Path cost: {self.path_length}")
-        print(f"Execution time: {generated_giliran}")
 
-        print(f"Total Generated= {self.number_of_generated}")
-        print(f"")
+        #Statistik
+        print("")
+        print(f"Total Path Length : {self.total_path_length}")
+        print(f"Total Path Cost : {self.total_path_cost}")
+        print(f"Jumlah langkah dihitung : {self.move_count}")
+        print(f"Total expanded (total)   : {self.number_of_expanded}")
+        print(f"Total generated (total)  : {self.number_of_generated}")
+        print(f"Total execution time    : {self.total_execution_time * 1000:.4f} ms")
 
-        return langkah
+        if not path:
+            return snake.direction
+
+        x_first, y_first = path[0]
+        dx, dy = x_first - x_start, y_first-y_start
+        for arah in legal:
+            if arah.vector == (dx, dy):
+                return arah
+
+
+
+        return rng.choice(list(legal))
+
+
 
 
 @register_strategy("Greedy Best-First Search")
-class Greedy_Best_First_Search(MoveStrategy):
+class GreedyBFS(MoveStrategy):
     def __init__(self):
-        # statistik
-        self.number_of_expanded = 0
-        self.number_of_generated = 0
-        self.path_length = 0
-        self.path_astar = []
+            # statistik
+            self.number_of_expanded = 0
+            self.number_of_generated = 0
+            self.path_length = 0
+            self.path_cost=0
+            self.path = []
 
+            self.execution_time = 0.0       
+            self.total_execution_time = 0.0 
+            self.move_count = 0
+
+            self.total_path_length = 0
+            self.total_path_cost = 0
+            self.current_target = None
+            self.max_path_length_target = 0
+            self.max_path_cost_target = 0
+            
     def choose_move(
         self, snapshot: GameSnapshot, snake_id: str, rng: Random
     ) -> Direction:
         legal = snapshot.legal_moves_for(snake_id)
         snake = snapshot.snake(snake_id)
-        if len(legal) == 0 or len(snapshot.apples) == 0:
+        if not legal or not snapshot.apples:
             return snake.direction
+
+        start_time = time.perf_counter()
 
         start = snake.body[0]
         apples = snapshot.apples
+        expanded=set()
+      
 
-        #Cek ilegal move
-        blocked = set()
-        for s in snapshot.snakes:
-            if s.snake_id == snake_id:
-                # ular sendiri: ekor tidak dihitung, karena akan bergeser
-                for i in range(len(s.body) - 1):
-                    blocked.add(s.body[i])
-            else:
-                # ular lawan: seluruh badan dihitung
-                for posisi in s.body:
-                    blocked.add(posisi)
-
-        # Cek apakah kotak (x, y) masih di dalam papan
-        def di_dalam_papan(x, y):
-            if x < 0:
-                return False
-            if x >= snapshot.columns:
-                return False
-            if y < 0:
-                return False
-            if y >= snapshot.rows:
-                return False
-            return True
-
-        # Cek apakah kotak (x, y) boleh dilewati
-        def boleh_dilewati(x, y):
-            if not di_dalam_papan(x, y):
-                return False
-            if (x, y) in blocked:
-                return False
-            return True
-
-        # Heuristik h: jarak Manhattan ke apel terdekat
-        def hitung_h(x, y):
-            h_terkecil = 9999
+        #fungsi hitung heuristik
+        def hitung_h(x,y):
+            h_min=9999
             for apel in apples:
-                apel_x, apel_y = apel
-                jarak = abs(x - apel_x) + abs(y - apel_y)
-                if jarak < h_terkecil:
-                    h_terkecil = jarak
-            return h_terkecil
+                x_apel, y_apel = apel
+                jarak = abs(x-x_apel)+abs(y-y_apel)
+                if(jarak<h_min):
+                    h_min=jarak
+            return h_min
 
-        # inisial state
-        start_x, start_y = start
-        h_start = hitung_h(start_x, start_y)
+        x_start, y_start = start
+        h_start=hitung_h(x_start,y_start)
+        
+        g_start=0
+        f_start=h_start
+        # print(f"h_start: {h_start}, g_start: {g_start}, f_start:{h_start}")
+        open_list = [(f_start, g_start, h_start, start)]
 
-        # Setiap isi open_list: (f, g, h, posisi)
-        open_list = [(h_start, 0, h_start, start)]
-
-        g_cost = {}
-        g_cost[start] = 0
-
-        parent_posisi = {}
-        parent_arah = {}
-        parent_posisi[start] = None
-
-        closed = set()              # posisi yang sudah diekspansi
         goal = None
+        parent = {start: None}
+        best_g = {start: 0}
+        # print(f"open_list :{open_list}")
 
-        expanded_giliran = 0
-        generated_giliran = 0
-        urutan_expand = []          # untuk dicetak: (posisi, g, h, f)
-
-       
-
-        #Loop A*
-
-        while len(open_list) > 0:
-
-            #Cari node dengan f terkecil (kalau f sama, pilih h terkecil)
+        while(len(open_list) > 0 ):
             best_i = 0
             for i in range(len(open_list)):
                 f_i, g_i, h_i, pos_i = open_list[i]
@@ -536,124 +466,101 @@ class Greedy_Best_First_Search(MoveStrategy):
                     best_i = i
                 if f_i == f_best and h_i < h_best:
                     best_i = i
-
-            #Keluarkan node terpilih dari open_list
+            
+            
             f, g, h, current = open_list.pop(best_i)
-
-            #Lewati kalau sudah pernah diekspansi
-            if current in closed:
+            
+            if current in expanded:
                 continue
 
             #Ekspansi node ini
-            closed.add(current)
-            expanded_giliran += 1
-            urutan_expand.append((current, g, h, f))
-
-            #ular makan apel
+            expanded.add(current)
+            self.number_of_expanded+=1
+            # print(f"expanded: {self.number_of_expanded}")
             if current in apples:
                 goal = current
                 break
 
-            current_x, current_y = current
+            x_current, y_current = current
             for arah in Direction:
-                # langkah pertama harus mengikuti legal moves dari engine
                 if current == start and arah not in legal:
                     continue
 
-                dx, dy = arah.vector
-                next_x = current_x + dx
-                next_y = current_y + dy
-                tetangga = (next_x, next_y)
+                dx, dy =  arah.vector
+                x_next = x_current + dx
+                y_next = y_current + dy
 
-                if not boleh_dilewati(next_x, next_y):
-                    continue
-                if tetangga in closed:
+                next = (x_next, y_next)
+                if next in snake.body:
                     continue
 
-                g_baru = g + 1                          # biaya dari start ke tetangga
-                h_baru = hitung_h(next_x, next_y)       # estimasi tetangga ke apel
-                f_baru = h_baru
+                if next in expanded:
+                    continue
 
-                # simpan kalau tetangga baru, atau ketemu jalan yang lebih murah
-                if tetangga not in g_cost or g_baru < g_cost[tetangga]:
-                    g_cost[tetangga] = g_baru
-                    parent_posisi[tetangga] = current
-                    parent_arah[tetangga] = arah
-                    open_list.append((f_baru, g_baru, h_baru, tetangga))
-                    generated_giliran += 1
+                g_new = g+1
 
-            print(f"Open List : {open_list}")
-            print(f"Closed List : {closed}")
+                # if next in best_g and g_new >= best_g[next]:
+                #     continue
             
+                best_g[next] = g_new
+                parent[next] = current
+                # print(f"parent: {parent[next]}")
 
-        self.number_of_expanded += expanded_giliran
-        self.number_of_generated += generated_giliran
-        # print(f"Goal : {goal}")
-  
-        #Kalau tidak ada jalur ke apel
+                self.number_of_generated+=1
+                h_new= hitung_h(x_next, y_next)
+                f_new = h_new
+
+                open_list.append((f_new, g_new, h_new, next))
+
+        
+        self.execution_time = time.perf_counter() - start_time
+        self.total_execution_time += self.execution_time
+        self.move_count+=1
+
+        
+        # print(f"Goal: {goal}")
         if goal == None:
-            pilihan = legal[0]
-            ruang_terbanyak = -1
-            for arah in legal:
-                dx, dy = arah.vector
-                x = start_x + dx
-                y = start_y + dy
+            return rng.choice(list(legal))
 
-                # hitung kotak kosong di sekitar (x, y)
-                ruang = 0
-                for arah_sekitar in Direction:
-                    sx, sy = arah_sekitar.vector
-                    if boleh_dilewati(x + sx, y + sy):
-                        ruang += 1
-
-                if ruang > ruang_terbanyak:
-                    ruang_terbanyak = ruang
-                    pilihan = arah
-
-            print(f"Tidak ada jalur ke apel, pilih {pilihan.name}")
-            return pilihan
-
-        #Susun jalur
-        jalur_posisi = []
-        jalur_arah = []
+        path = []
         node = goal
-        while parent_posisi[node] != None:
-            jalur_posisi.insert(0, node)
-            jalur_arah.insert(0, parent_arah[node])
-            node = parent_posisi[node]
+        while node != start:
+            path.append(node)
+            node = parent[node]
+        path.reverse()
 
-        self.path_astar = jalur_posisi
-        self.path_length += 1
-        langkah = jalur_arah[0]
+        self.path=path
+        self.path_length = len(path)
+        self.path_cost = best_g[goal]
+        self.total_path_cost+=1
 
-        teks_jalur = ""
-        for arah in jalur_arah:
-            if teks_jalur != "":
-                teks_jalur += " -> "
-            teks_jalur += arah.name
+        if goal != self.current_target:
+            self.current_target = goal
+            self.max_path_length_target = self.path_length
+            self.total_path_length += self.path_length
+        elif self.path_length > self.max_path_length_target:
+                self.total_path_length += self.path_length - self.max_path_length_target
+                self.max_path_length_target = self.path_length
 
-        #Cetak rekap proses ronde ini
-        print(f"Apel   : {goal}")
-        print(f"Jalur  : {teks_jalur}")
-        print(f"Pilih  : {langkah.name}")
-        print(f"\n===== Ronde {snapshot.rounds_completed} =====")
-        print(f"Kepala : {start}")
-        print(f"Node yang diekspansi ({expanded_giliran}):")
-        nomor = 1
-        for data in urutan_expand:
-            posisi, g, h, f = data
-            print(f"  {nomor}. {posisi}  g={g} h={h} f={f}")
-            nomor += 1
-        print(f"Generated: {generated_giliran}")
 
-        print(f"Number of food items collected: {snake.score}")
-        print(f"Number of states expanded: {self.number_of_expanded}")
-        print(f"Number of states Generated: {self.number_of_generated}")
-        print(f"Path length: {self.path_length}")
-        # print(f"Path cost: {self.path_length}")
-        print(f"Execution time: {generated_giliran}")
+        #Statistik
+        print("")
+        print(f"Total Path Length : {self.total_path_length}")
+        print(f"Total Path Cost : {self.total_path_cost}")
+        print(f"Jumlah langkah dihitung : {self.move_count}")
+        print(f"Total expanded (total)   : {self.number_of_expanded}")
+        print(f"Total generated (total)  : {self.number_of_generated}")
+        print(f"Total execution time    : {self.total_execution_time * 1000:.4f} ms")
 
-        print(f"Total Generated= {self.number_of_generated}")
-        print(f"")
+        if not path:
+            return snake.direction
 
-        return langkah
+        x_first, y_first = path[0]
+        dx, dy = x_first - x_start, y_first-y_start
+        for arah in legal:
+            if arah.vector == (dx, dy):
+                return arah
+
+
+
+        return rng.choice(list(legal))
