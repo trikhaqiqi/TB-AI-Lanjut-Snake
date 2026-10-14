@@ -188,21 +188,61 @@ def _langkah_bertahan(
 class StrategiBFS(MoveStrategy):
     # Breadth-First Search
 
+    def __init__(self) -> None:
+        self.number_of_expanded = 0
+        self.number_of_generated = 0
+        self.total_path_length = 0
+        self.total_path_cost = 0
+        self.move_count = 0
+        self.execution_time = 0.0
+        self.total_execution_time = 0.0
+        self.current_target: Position | None = None
+        self.max_path_length_target = 0
+
     def choose_move(
         self, snapshot: GameSnapshot, snake_id: str, rng: Random
     ) -> Direction:
         gerakan_sah = snapshot.legal_moves_for(snake_id)
         ular = snapshot.snake(snake_id)
-        if not gerakan_sah:
+        if not gerakan_sah or not snapshot.apples:
             return ular.direction
 
+        mulai = time.perf_counter()
         jalur = self.cari_jalur(snapshot, snake_id)
         if jalur:
-            return jalur[0]
-        return _langkah_bertahan(snapshot, snake_id, gerakan_sah)
+            langkah = jalur[0]
+        else:
+            langkah = _langkah_bertahan(snapshot, snake_id, gerakan_sah)
+        self.execution_time = time.perf_counter() - mulai
+        self.total_execution_time += self.execution_time
+        self.move_count += 1
 
-    @staticmethod
-    def cari_jalur(snapshot: GameSnapshot, snake_id: str) -> list[Direction] | None:
+        if jalur:
+            # Path cost: tiap langkah yang dijalankan menuju apel bernilai 1.
+            self.total_path_cost += 1
+            target = ular.body[0]
+            for arah in jalur:
+                target = _tetangga(target, arah)
+            # Path length: panjang rencana jalur ke tiap apel target (sekali per
+            # target, ditambah selisihnya jika rencana ke target yang sama memanjang).
+            if target != self.current_target:
+                self.current_target = target
+                self.max_path_length_target = len(jalur)
+                self.total_path_length += len(jalur)
+            elif len(jalur) > self.max_path_length_target:
+                self.total_path_length += len(jalur) - self.max_path_length_target
+                self.max_path_length_target = len(jalur)
+
+        print("")
+        print(f"Total Path Length : {self.total_path_length}")
+        print(f"Total Path Cost : {self.total_path_cost}")
+        print(f"Jumlah langkah dihitung : {self.move_count}")
+        print(f"Total expanded (total)   : {self.number_of_expanded}")
+        print(f"Total generated (total)  : {self.number_of_generated}")
+        print(f"Total execution time    : {self.total_execution_time * 1000:.4f} ms")
+        return langkah
+
+    def cari_jalur(self, snapshot: GameSnapshot, snake_id: str) -> list[Direction] | None:
         # Kembalikan daftar gerakan terpendek menuju apel mana pun atau None
         kepala = snapshot.snake(snake_id).body[0]
         apel = set(snapshot.apples)
@@ -211,8 +251,10 @@ class StrategiBFS(MoveStrategy):
         # Frontier berupa antrean FIFO: simpul diekspansi berurutan per kedalaman.
         frontier: deque[tuple[Position, list[Direction]]] = deque()
         dikunjungi = {kepala}
+        self.number_of_expanded += 1  # Ekspansi simpul awal (kepala ular).
         for arah in snapshot.legal_moves_for(snake_id):
             sel = _tetangga(kepala, arah)
+            self.number_of_generated += 1
             if sel in apel:
                 return [arah]
             dikunjungi.add(sel)
@@ -220,6 +262,7 @@ class StrategiBFS(MoveStrategy):
 
         while frontier:
             sel, jalur = frontier.popleft()
+            self.number_of_expanded += 1
             langkah = len(jalur)
             for arah in Direction:
                 berikutnya = _tetangga(sel, arah)
@@ -227,6 +270,7 @@ class StrategiBFS(MoveStrategy):
                     snapshot, waktu, berikutnya, langkah + 1
                 ):
                     continue
+                self.number_of_generated += 1
                 if berikutnya in apel:
                     return jalur + [arah]
                 dikunjungi.add(berikutnya)
@@ -241,19 +285,67 @@ class StrategiUCS(MoveStrategy):
     BIAYA_LANGKAH = 1
     PENALTI_BAHAYA = 2
 
+    def __init__(self) -> None:
+        self.number_of_expanded = 0
+        self.number_of_generated = 0
+        self.total_path_length = 0
+        self.total_path_cost = 0
+        self.move_count = 0
+        self.execution_time = 0.0
+        self.total_execution_time = 0.0
+        self.current_target: Position | None = None
+        self.max_path_length_target = 0
+        # Biaya versi UCS (langkah + penalti bahaya) dari langkah yang dijalankan.
+        self.total_biaya_ucs = 0
+
     def choose_move(
         self, snapshot: GameSnapshot, snake_id: str, rng: Random
     ) -> Direction:
         gerakan_sah = snapshot.legal_moves_for(snake_id)
         ular = snapshot.snake(snake_id)
-        if not gerakan_sah:
+        if not gerakan_sah or not snapshot.apples:
             return ular.direction
 
+        mulai = time.perf_counter()
         hasil = self.cari_jalur(snapshot, snake_id)
         if hasil:
-            _, jalur = hasil
-            return jalur[0]
-        return _langkah_bertahan(snapshot, snake_id, gerakan_sah)
+            jalur = hasil[1]
+            langkah = jalur[0]
+        else:
+            langkah = _langkah_bertahan(snapshot, snake_id, gerakan_sah)
+        self.execution_time = time.perf_counter() - mulai
+        self.total_execution_time += self.execution_time
+        self.move_count += 1
+
+        if hasil:
+            # Path cost: tiap langkah yang dijalankan menuju apel bernilai 1.
+            self.total_path_cost += 1
+            target = ular.body[0]
+            for arah in jalur:
+                target = _tetangga(target, arah)
+            # Path length: panjang rencana jalur ke tiap apel target (sekali pertarget, ditambah selisihnya jika rencana ke target yang sama memanjang).
+            if target != self.current_target:
+                self.current_target = target
+                self.max_path_length_target = len(jalur)
+                self.total_path_length += len(jalur)
+            elif len(jalur) > self.max_path_length_target:
+                self.total_path_length += len(jalur) - self.max_path_length_target
+                self.max_path_length_target = len(jalur)
+
+            waktu = _waktu_rintangan(snapshot, snake_id)
+            self.total_biaya_ucs += self.biaya_langkah(
+                snapshot, waktu, _tetangga(ular.body[0], langkah), 1
+            )
+
+        print("")
+        print(f"Total Path Length : {self.total_path_length}")
+        print(f"Total Path Cost : {self.total_path_cost}")
+        print(f"Total biaya UCS (langkah + penalti) : {self.total_biaya_ucs}")
+        print(f"Jumlah langkah dihitung : {self.move_count}")
+        print(f"Total expanded (total)   : {self.number_of_expanded}")
+        print(f"Total generated (total)  : {self.number_of_generated}")
+        print(f"Total execution time    : {self.total_execution_time * 1000:.4f} ms")
+        return langkah
 
     @classmethod
     def biaya_langkah(
@@ -269,9 +361,8 @@ class StrategiUCS(MoveStrategy):
         )
         return cls.BIAYA_LANGKAH + cls.PENALTI_BAHAYA * sisi_tertutup
 
-    @classmethod
     def cari_jalur(
-        cls, snapshot: GameSnapshot, snake_id: str
+        self, snapshot: GameSnapshot, snake_id: str
     ) -> tuple[int, list[Direction]] | None:
         # Kembalikan (biaya, gerakan) jalur termurah ke apel, atau None
         kepala = snapshot.snake(snake_id).body[0]
@@ -283,17 +374,20 @@ class StrategiUCS(MoveStrategy):
         frontier: list[tuple[int, int, Position, list[Direction]]] = []
         penghitung = 0
         biaya_terbaik: dict[Position, int] = {kepala: 0}
+        self.number_of_expanded += 1  # Ekspansi simpul awal (kepala ular).
         for arah in snapshot.legal_moves_for(snake_id):
             sel = _tetangga(kepala, arah)
-            biaya = cls.biaya_langkah(snapshot, waktu, sel, 1)
+            biaya = self.biaya_langkah(snapshot, waktu, sel, 1)
             biaya_terbaik[sel] = biaya
             heapq.heappush(frontier, (biaya, penghitung, sel, [arah]))
             penghitung += 1
+            self.number_of_generated += 1
 
         while frontier:
             biaya, _, sel, jalur = heapq.heappop(frontier)
             if biaya > biaya_terbaik.get(sel, biaya):
                 continue  # Jalur yang lebih murah ke sel ini sudah diekspansi.
+            self.number_of_expanded += 1
             # Uji tujuan saat ekspansi menjamin jalur yang ditemukan paling murah.
             if sel in apel:
                 return biaya, jalur
@@ -302,7 +396,7 @@ class StrategiUCS(MoveStrategy):
                 berikutnya = _tetangga(sel, arah)
                 if not _sel_kosong(snapshot, waktu, berikutnya, langkah + 1):
                     continue
-                biaya_baru = biaya + cls.biaya_langkah(
+                biaya_baru = biaya + self.biaya_langkah(
                     snapshot, waktu, berikutnya, langkah + 1
                 )
                 if biaya_baru < biaya_terbaik.get(berikutnya, biaya_baru + 1):
@@ -311,6 +405,7 @@ class StrategiUCS(MoveStrategy):
                         frontier, (biaya_baru, penghitung, berikutnya, jalur + [arah])
                     )
                     penghitung += 1
+                    self.number_of_generated += 1
         return None
 
 
