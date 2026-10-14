@@ -518,11 +518,8 @@ class DFS(MoveStrategy):
 @register_strategy("Minimax")
 class Minimax(MoveStrategy):
     MAX_DEPTH = 5
-
-    def choose_move(
-        self, snapshot: GameSnapshot, snake_id: str, rng: Random
-    ) -> Direction:
-
+    
+    def choose_move(self, snapshot, snake_id, rng) -> Direction:
         legal = snapshot.legal_moves_for(snake_id)
         if not legal:
             return snapshot.snake(snake_id).direction
@@ -533,7 +530,7 @@ class Minimax(MoveStrategy):
             if snapshot.snakes[index].snake_id != snake_id:
                 opponent_id = snapshot.snakes[index].snake_id
             index += 1
-    
+
         best_value = float("-inf")
         best_moves = []
 
@@ -551,10 +548,10 @@ class Minimax(MoveStrategy):
 
     def _minimax(self, curDepth, snapshot, opponents_turn, snake_id, opponent_id):
         if not snapshot.apples:
-            return 100 * (snapshot.snake(snake_id).score - snapshot.snake(opponent_id).score)
+            return 100 * (snapshot.snake(snake_id).score)
                         
         if curDepth == 0:
-            return 100 * (snapshot.snake(snake_id).score - snapshot.snake(opponent_id).score) + self._distance_heuristic(snapshot, snake_id, opponent_id)
+            return 100 * (snapshot.snake(snake_id).score) + self._distance_heuristic(snapshot, snake_id, opponent_id)
             
         if opponents_turn:
             legal = snapshot.legal_moves_for(opponent_id)
@@ -588,10 +585,10 @@ class Minimax(MoveStrategy):
 
         lowest_distance = float('-inf')
         for apple in snapshot.apples:
-            snake_distance = abs(snake.body[0][0] - apple[0]) + abs(snake.body[0][1] - apple[1])
-            opponent_distance = abs(opponent.body[0][0] - apple[0]) + abs(opponent.body[0][1] - apple[1])
-            if (((2 * snake_distance) - opponent_distance) * -1) > lowest_distance:
-                lowest_distance = ((2* snake_distance) - opponent_distance) * -1
+            snake_distance = ((snake.body[0][0] - apple[0]) ** 2 + (snake.body[0][1] - apple[1]) ** 2) ** 0.5
+            opponent_distance = ((opponent.body[0][0] - apple[0]) ** 2 + (opponent.body[0][1] - apple[1]) ** 2) ** 0.5
+            if (opponent_distance - (2 * snake_distance)) > lowest_distance:
+                lowest_distance = (opponent_distance - (2 * snake_distance))
 
         return lowest_distance
         
@@ -672,47 +669,44 @@ class Minimax(MoveStrategy):
             active_snake_id=next_snake_id,
             legal_moves=tuple(new_legal_moves)
         )
-
+    
 @register_strategy("Minimax AB Pruning")
 class MiniMaxABPruning(Minimax):
     MAX_DEPTH = 10
 
-    def choose_move(
-            self, snapshot: GameSnapshot, snake_id: str, rng: Random
-        ) -> Direction:
+    def choose_move(self, snapshot: GameSnapshot, snake_id: str, rng: Random) -> Direction:
+        legal = snapshot.legal_moves_for(snake_id)
+        if not legal:
+            return snapshot.snake(snake_id).direction
+            
+        opponent_id = None
+        index = 0
+        while opponent_id is None:
+            if snapshot.snakes[index].snake_id != snake_id:
+                opponent_id = snapshot.snakes[index].snake_id
+            index += 1
     
-            legal = snapshot.legal_moves_for(snake_id)
-            if not legal:
-                return snapshot.snake(snake_id).direction
-                
-            opponent_id = None
-            index = 0
-            while opponent_id is None:
-                if snapshot.snakes[index].snake_id != snake_id:
-                    opponent_id = snapshot.snakes[index].snake_id
-                index += 1
-        
-            best_value = float("-inf")
-            best_moves = []
-    
-            for move in legal:
-                new_snapshot = self._expand_snapshot(snapshot, snake_id, move, opponent_id)
-                value = self._minimax(self.MAX_DEPTH - 1, new_snapshot, True, snake_id, opponent_id, float("-inf"), float("inf"))
-    
-                if value > best_value:
-                    best_value = value
-                    best_moves = [move]
-                elif value == best_value:
-                    best_moves.append(move)
-    
-            return rng.choice(best_moves)
+        best_value = float("-inf")
+        best_moves = []
+
+        for move in legal:
+            new_snapshot = self._expand_snapshot(snapshot, snake_id, move, opponent_id)
+            value = self._minimax(self.MAX_DEPTH - 1, new_snapshot, True, snake_id, opponent_id, float("-inf"), float("inf"))
+
+            if value > best_value:
+                best_value = value
+                best_moves = [move]
+            elif value == best_value:
+                best_moves.append(move)
+
+        return rng.choice(best_moves)
 
     def _minimax(self, curDepth, snapshot, opponents_turn, snake_id, opponent_id, alpha, beta):
         if not snapshot.apples:
-            return 100 * (snapshot.snake(snake_id).score - snapshot.snake(opponent_id).score)
+            return 100 * (snapshot.snake(snake_id).score)
                         
         if curDepth == 0:
-            return 100 * (snapshot.snake(snake_id).score - snapshot.snake(opponent_id).score) + self._distance_heuristic(snapshot, snake_id, opponent_id)
+            return 100 * (snapshot.snake(snake_id).score) + self._distance_heuristic(snapshot, snake_id, opponent_id)
                     
         if opponents_turn:
             best_value = float("inf")
@@ -748,7 +742,42 @@ class MiniMaxABPruning(Minimax):
                 if alpha >= beta:
                     break
                                 
-            return best_value 
+            return best_value
+
+@register_strategy("Expectimax")
+class Expectimax(Minimax):
+    def _minimax(self, curDepth, snapshot, opponents_turn, snake_id, opponent_id):
+        if not snapshot.apples:
+            return 100 * (snapshot.snake(snake_id).score)
+                        
+        if curDepth == 0:
+            return 100 * (snapshot.snake(snake_id).score - snapshot.snake(opponent_id).score) + self._distance_heuristic(snapshot, snake_id, opponent_id)
+            
+        if opponents_turn:
+            legal = snapshot.legal_moves_for(opponent_id)
+            if not legal:
+                return float("inf")
+            values = []
+
+            for move in legal:
+                new_snapshot = self._expand_snapshot(snapshot, opponent_id, move, snake_id)
+                value = self._minimax(curDepth - 1, new_snapshot, False, snake_id, opponent_id)
+                values.append(value)
+
+            return sum(values) / len(values)
+        else:
+            legal = snapshot.legal_moves_for(snake_id)
+            if not legal:
+                return float("-inf")
+            
+            values = []
+
+            for move in legal:
+                new_snapshot = self._expand_snapshot(snapshot, snake_id, move, opponent_id)
+                value = self._minimax(curDepth - 1, new_snapshot, True, snake_id, opponent_id)
+                values.append(value)
+                                
+            return max(values)
 
 
 @register_strategy("A*")
